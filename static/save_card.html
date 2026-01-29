@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Save Card - Stripe SetupIntent Example</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      .card { max-width: 520px; margin: 0 auto; }
+      #card-element { padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
+      button { margin-top: 12px; padding: 10px 14px; }
+      .result { margin-top: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Save Card (SetupIntent)</h2>
+      <p>Update the `PUBLISHABLE_KEY` and `CUSTOMER_ID` variables below before testing.</p>
+
+      <div id="card-element"></div>
+      <button id="save-card">Save card</button>
+      <div id="result" class="result"></div>
+    </div>
+
+    <script>
+      // TODO: replace with your publishable key
+      const PUBLISHABLE_KEY = "pk_test_";
+      // TODO: set the customer id created by the server (e.g., cus_...)
+      const CUSTOMER_ID = "cus_TslP3LMR397bTq";
+
+      const stripe = Stripe(PUBLISHABLE_KEY);
+      const elements = stripe.elements();
+      const card = elements.create('card');
+      card.mount('#card-element');
+
+      async function createSetupIntent(customerId) {
+        const res = await fetch(`/customers/${customerId}/setup-intent`, { method: 'POST' });
+        return res.json();
+      }
+
+      document.getElementById('save-card').addEventListener('click', async () => {
+        document.getElementById('result').textContent = 'Requesting SetupIntent...';
+
+        const { client_secret, setup_intent_id } = await createSetupIntent(CUSTOMER_ID);
+
+        const result = await stripe.confirmCardSetup(client_secret, {
+          payment_method: {
+            card: card,
+            billing_details: { name: 'Test Cardholder' }
+          }
+        });
+
+        if (result.error) {
+          document.getElementById('result').textContent = 'Error: ' + result.error.message;
+        } else {
+          // PaymentMethod ID is result.setupIntent.payment_method
+          document.getElementById('result').textContent = 'Saved! PaymentMethod id: ' + result.setupIntent.payment_method + '\nSetupIntent: ' + setup_intent_id;
+          // Optionally send the payment_method id to your server to store in your DB
+        }
+      });
+    </script>
+  </body>
+</html>

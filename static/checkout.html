@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stripe Checkout Example</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      .container { max-width: 520px; margin: 0 auto; }
+      .form-group { margin-bottom: 12px; }
+      label { display: block; margin-bottom: 6px; font-weight: bold; }
+      input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+      button { padding: 10px 14px; background-color: #5469d4; color: white; border: none; border-radius: 4px; cursor: pointer; }
+      button:hover { background-color: #3d5c9a; }
+      .result { margin-top: 12px; white-space: pre-wrap; }
+      .success { background-color: #d4edda; padding: 12px; border-radius: 4px; }
+      .error { background-color: #f8d7da; padding: 12px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Stripe Checkout</h2>
+      <p>Redirect to Stripe's hosted checkout page for payment processing.</p>
+
+      <div class="form-group">
+        <label for="customer-id">Customer ID (cus_...)</label>
+        <input type="text" id="customer-id" placeholder="cus_replace_with_customer_id" />
+      </div>
+
+      <div class="form-group">
+        <label for="amount">Amount (in cents)</label>
+        <input type="number" id="amount" value="5000" placeholder="5000" />
+      </div>
+
+      <div class="form-group">
+        <label for="description">Description</label>
+        <input type="text" id="description" value="Premium Subscription" placeholder="Premium Subscription" />
+      </div>
+
+      <button onclick="createCheckout()">Create Checkout Session & Redirect</button>
+
+      <div id="result" class="result"></div>
+    </div>
+
+    <script>
+      async function createCheckout() {
+        const customerId = document.getElementById('customer-id').value;
+        const amount = parseInt(document.getElementById('amount').value);
+        const description = document.getElementById('description').value;
+
+        if (!customerId || !amount) {
+          showError('Please fill in all fields');
+          return;
+        }
+
+        showResult('Creating checkout session...');
+
+        try {
+          // Create checkout session
+          const params = new URLSearchParams({
+            customer_id: customerId,
+            amount: amount,
+            description: description,
+            success_url: window.location.origin + '/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url: window.location.origin + '/checkout/cancel'
+          });
+
+          const res = await fetch(`/checkout/create?${params.toString()}`, { method: 'POST' });
+          const data = await res.json();
+
+          if (data.checkout_url) {
+            showSuccess(`Session created! Redirecting to Stripe checkout...`);
+            // Redirect to Stripe checkout
+            window.location.href = data.checkout_url;
+          } else {
+            showError('Failed to create checkout session: ' + JSON.stringify(data));
+          }
+        } catch (err) {
+          showError('Error: ' + err.message);
+        }
+      }
+
+      function showResult(msg) {
+        document.getElementById('result').textContent = msg;
+        document.getElementById('result').className = 'result';
+      }
+
+      function showSuccess(msg) {
+        document.getElementById('result').textContent = msg;
+        document.getElementById('result').className = 'result success';
+      }
+
+      function showError(msg) {
+        document.getElementById('result').textContent = msg;
+        document.getElementById('result').className = 'result error';
+      }
+    </script>
+  </body>
+</html>

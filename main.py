@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import stripe
+import os
 
 from config import API_TITLE, API_VERSION, STRIPE_SECRET_KEY, WEBHOOK_SECRET
 from models import (
@@ -26,6 +28,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 @app.get("/", tags=["Health"])
@@ -202,6 +209,25 @@ async def add_payment_method(customer_id: str, payment_method: PaymentMethodCard
         )
 
 
+@app.post("/customers/{customer_id}/setup-intent", tags=["Customers"])
+async def create_setup_intent(customer_id: str):
+    """Create a SetupIntent for a customer and return the client_secret.
+
+    Use this on the server to request a client secret which the frontend
+    will use with Stripe.js to tokenize card details (no raw card data
+    goes through your server).
+    """
+    try:
+        setup_intent = stripe.SetupIntent.create(
+            customer=customer_id,
+            payment_method_types=["card"],
+            usage="off_session"
+        )
+        return {"client_secret": setup_intent.client_secret, "setup_intent_id": setup_intent.id}
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @app.post("/payments/{payment_id}/refund", response_model=RefundResponse, tags=["Refunds"])
 async def refund_payment(payment_id: str, refund_request: RefundRequest) -> RefundResponse:
     """
@@ -238,6 +264,82 @@ async def list_payment_methods(customer_id: str) -> list:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@app.post("/checkout/create", tags=["Checkout"])
+async def create_checkout_session(
+    customer_id: str,
+    amount: int,
+    description: str,
+    success_url: str = "http://localhost:8000/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+    cancel_url: str = "http://localhost:8000/checkout/cancel"
+) -> dict:
+    """
+    Create a Stripe Checkout Session for payment
+    
+    User will be redirected to Stripe's hosted checkout page to enter card details.
+    After payment, they are redirected back to your `success_url`.
+    
+    - **customer_id**: Stripe Customer ID
+    - **amount**: Amount in cents (e.g., 5000 for $50.00)
+    - **description**: Product/service description
+    - **success_url**: URL to redirect on successful payment (use {CHECKOUT_SESSION_ID} placeholder)
+    - **cancel_url**: URL to redirect if user cancels
+    """
+    try:
+        response = StripeService.create_checkout_session(
+            customer_id=customer_id,
+            amount=amount,
+            description=description,
+            success_url=success_url,
+            cancel_url=cancel_url
+        )
+        return response
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@app.get("/checkout/session/{session_id}", tags=["Checkout"])
+async def get_checkout_session(session_id: str) -> dict:
+    """
+    Get checkout session details and payment status
+    
+    - **session_id**: Stripe Checkout Session ID
+    """
+    try:
+        response = StripeService.get_checkout_session(session_id)
+        return response
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+
+@app.get("/checkout/success", tags=["Checkout"])
+async def checkout_success(session_id: str):
+    """Callback page after successful payment (customize as needed)"""
+    try:
+        session_info = StripeService.get_checkout_session(session_id)
+        return {
+            "status": "success",
+            "message": "Payment completed successfully!",
+            "session": session_info
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+
+@app.get("/checkout/cancel", tags=["Checkout"])
+async def checkout_cancel():
+    """Callback page if user cancels payment"""
+    return {"status": "cancelled", "message": "Payment was cancelled"}
 
 
 @app.exception_handler(Exception)

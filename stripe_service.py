@@ -273,4 +273,76 @@ class StripeService:
                 for pm in payment_methods.data
             ]
         except stripe.error.StripeError as e:
+            raise Exception(f"Stripe error: {str(e)}")    
+    @staticmethod
+    def create_checkout_session(
+        customer_id: str,
+        amount: int,
+        description: str,
+        success_url: str,
+        cancel_url: str
+    ) -> dict:
+        """
+        Create a Stripe Checkout Session for payment
+        
+        Args:
+            customer_id: Stripe Customer ID
+            amount: Amount in cents
+            description: Product/service description
+            success_url: URL to redirect on success (include {CHECKOUT_SESSION_ID} placeholder)
+            cancel_url: URL to redirect on cancel
+            
+        Returns:
+            Checkout session details with redirect URL
+        """
+        try:
+            session = stripe.checkout.Session.create(
+                customer=customer_id,
+                payment_method_types=["card"],
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": CURRENCY,
+                            "product_data": {"name": description},
+                            "unit_amount": amount
+                        },
+                        "quantity": 1
+                    }
+                ],
+                mode="payment",
+                success_url=success_url,
+                cancel_url=cancel_url
+            )
+            
+            return {
+                "session_id": session.id,
+                "checkout_url": session.url,
+                "status": session.payment_status
+            }
+        except stripe.error.StripeError as e:
+            raise Exception(f"Stripe error: {str(e)}")
+    
+    @staticmethod
+    def get_checkout_session(session_id: str) -> dict:
+        """
+        Retrieve a checkout session details
+        
+        Args:
+            session_id: Stripe Checkout Session ID
+            
+        Returns:
+            Session details
+        """
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            
+            return {
+                "session_id": session.id,
+                "payment_status": session.payment_status,
+                "payment_intent": session.payment_intent,
+                "customer": session.customer,
+                "amount_total": session.amount_total,
+                "currency": session.currency
+            }
+        except stripe.error.StripeError as e:
             raise Exception(f"Stripe error: {str(e)}")

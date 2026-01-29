@@ -221,6 +221,35 @@ stripe trigger payment_intent.succeeded
 
 3. The forwarded event will hit `http://localhost:8000/webhook` and your app will verify the signature and return a JSON acknowledgement.
 
+## Card tokenization example (SetupIntent)
+
+This repo includes a minimal frontend example that demonstrates how to tokenize card details
+using Stripe.js and a `SetupIntent` so you can save a card to a Stripe `Customer` without
+handling raw card numbers on your server.
+
+- Example HTML: `static/save_card.html`
+
+Usage:
+
+1. Start the FastAPI server:
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+2. Create a customer using the API (`POST /customers/create`) and note the `customer_id`.
+3. Open `static/save_card.html` in a browser (or serve it via a static server), update the
+  `PUBLISHABLE_KEY` and `CUSTOMER_ID` placeholders in the file, then click **Save card**.
+
+What happens:
+
+- The page requests a SetupIntent client secret from `/customers/{customer_id}/setup-intent`.
+- Stripe.js calls `confirmCardSetup(client_secret, { payment_method: { card }})` to tokenize the card.
+- On success the saved `payment_method` id (pm_...) is available in the `setupIntent` object.
+- Since the SetupIntent was created with the `customer`, Stripe attaches the PaymentMethod to that customer automatically.
+
+Security note: Do not place your secret key in the frontend. Use the publishable key only.
+
 ## Troubleshooting
 
 ### "API Key error"
@@ -242,6 +271,39 @@ stripe trigger payment_intent.succeeded
 - [Stripe Python SDK](https://github.com/stripe/stripe-python)
 - [Stripe Testing Guide](https://stripe.com/docs/testing)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
+
+## Stripe Checkout (Hosted Payment Page)
+
+Instead of handling card details on your server, redirect users to Stripe's hosted checkout page.
+This is simpler, more secure, and better for PCI compliance.
+
+### Usage
+
+1. Create a checkout session:
+
+```bash
+curl -X POST "http://localhost:8000/checkout/create?customer_id=cus_XXXXXXXX&amount=5000&description=Premium%20Subscription"
+```
+
+The response includes a `checkout_url` — redirect the user there.
+
+2. User enters card details on Stripe's secure page.
+3. On success, Stripe redirects to `/checkout/success?session_id=cs_...`
+4. On cancel, Stripe redirects to `/checkout/cancel`
+
+### HTML Example
+
+Open [http://localhost:8000/static/checkout.html](http://localhost:8000/static/checkout.html) to test interactively.
+
+Enter a customer ID, amount, and description, then click "Create Checkout Session & Redirect".
+You'll be taken to Stripe's hosted checkout page.
+
+### API Endpoints
+
+- `POST /checkout/create` - Create a checkout session and get redirect URL
+- `GET /checkout/session/{session_id}` - Get session status
+- `GET /checkout/success` - Callback after successful payment
+- `GET /checkout/cancel` - Callback if user cancels
 
 ## License
 
